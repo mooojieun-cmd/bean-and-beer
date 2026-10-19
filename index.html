@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<script type="module">
+  import { bubbleCursor } from "https://unpkg.com/cursor-effects@latest/dist/esm.js";
+
+  new bubbleCursor();
+</script>
+
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>풋콩과맥주와생각파쇄기</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #ffffff;
+    }
+
+    .background {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .ellipse {
+      position: absolute;
+      width: 85px;
+      height: 54px;
+      border-radius: 50%;
+      background: #45ef00;
+      will-change: transform;
+    }
+
+    .logo-button {
+      position: relative;
+      z-index: 1;
+      padding: 0;
+      border: 0;
+      background: none;
+      cursor: pointer;
+    }
+
+    .logo-button img {
+      display: block;
+    }
+
+    .logo-hover {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .logo-button:hover .logo-hover {
+      opacity: 1;
+    }
+
+   .ellipse {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.ellipse.is-bean {
+  background-color: transparent;
+  background-image: url("bean.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+@keyframes beanPop {
+  0% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--bean-rotation))
+      scale(0.5);
+  }
+
+  20% {
+    opacity: 1;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--bean-rotation))
+      scale(1.1);
+  }
+
+  80% {
+    opacity: 1;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--bean-rotation))
+      scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--bean-rotation))
+      scale(0.8);
+  }
+}
+  </style>
+</head>
+
+<body>  
+
+<audio id="popSound" src="sound/pop.mp3" preload="auto"></audio>
+<audio id="openingSound" src="sound/opening.mp3"></audio>
+
+  <div class="background" id="background">
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+    <div class="ellipse"></div>
+  </div>
+
+  <button class="logo-button" id="logoButton" aria-label="시작하기">
+    <img src="logo.png" alt="로고">
+    <img class="logo-hover" src="logo2.png" alt="">
+  </button>
+
+ 
+
+  <script>
+
+
+
+    const ellipses = document.querySelectorAll(".ellipse");
+
+    const objects = [];
+
+    function random(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    function createEllipse(element) {
+      return {
+        element: element,
+        x: random(0, window.innerWidth - 170),
+        y: random(0, window.innerHeight - 105),
+        speedX: random(-0.5, 0.5),
+        speedY: random(-0.5, 0.5),
+        rotation: random(0, 360),
+        rotationSpeed: random(-0.2, 0.2)
+      };
+    }
+
+    ellipses.forEach((ellipse) => {
+      objects.push(createEllipse(ellipse));
+    });
+
+    function animate() {
+      objects.forEach((object) => {
+        object.x += object.speedX;
+        object.y += object.speedY;
+        object.rotation += object.rotationSpeed;
+
+        const maxX = window.innerWidth - object.element.offsetWidth;
+        const maxY = window.innerHeight - object.element.offsetHeight;
+
+        if (object.x <= 0 || object.x >= maxX) {
+          object.speedX *= -1;
+        }
+
+        if (object.y <= 0 || object.y >= maxY) {
+          object.speedY *= -1;
+        }
+
+        object.element.style.transform = `
+          translate(${object.x}px, ${object.y}px)
+          rotate(${object.rotation}deg)
+        `;
+      });
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    window.addEventListener("resize", () => {
+      objects.forEach((object) => {
+        object.x = Math.min(object.x, window.innerWidth - object.element.offsetWidth);
+        object.y = Math.min(object.y, window.innerHeight - object.element.offsetHeight);
+      });
+    });
+
+ const popSound = document.getElementById("popSound");
+const beanTimers = new WeakMap();
+
+ellipses.forEach((ellipse) => {
+  ellipse.addEventListener("click", () => {
+    // 타원 자체를 bean.png로 변경
+    ellipse.classList.add("is-bean");
+
+    // pop.mp3 재생
+    popSound.currentTime = 0;
+    popSound.play().catch((error) => {
+      console.error("pop.mp3 재생 실패:", error);
+    });
+
+    // 기존 타이머가 있으면 초기화
+    clearTimeout(beanTimers.get(ellipse));
+
+    // 1.5초 후 다시 타원으로 복귀
+    const timer = setTimeout(() => {
+      ellipse.classList.remove("is-bean");
+    }, 1500);
+
+    beanTimers.set(ellipse, timer);
+  });
+});
+
+const logoButton = document.getElementById("logoButton");
+const openingSound = document.getElementById("openingSound");
+
+logoButton.addEventListener("click", () => {
+  openingSound.currentTime = 0;
+
+  openingSound.play()
+    .then(() => {
+      console.log("opening.mp3 재생 시작");
+    })
+    .catch((error) => {
+      console.error("opening.mp3 재생 실패:", error);
+    });
+});
+
+openingSound.addEventListener("ended", () => {
+  window.location.href = "1.html";
+});
+
+openingSound.addEventListener("error", () => {
+  console.error("sound/opening.mp3 파일을 찾을 수 없습니다.");
+});
+  </script>
+</body>
+</html>
