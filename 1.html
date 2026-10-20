@@ -45,7 +45,23 @@
     }
 
     .back-button {
-      position: relative;
+      position: absolute;
+      top: 28px;
+      left: 28px;
+      z-index: 20;
+      display: block;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .forward-button {
+      position: absolute;
+      top: 28px;
+      right: 28px;
       z-index: 20;
       display: block;
       width: 42px;
@@ -67,7 +83,12 @@
       transform: scale(1.06);
     }
 
+    .forward-button:hover {
+      transform: scale(1.06);
+    }
+
     .back-button:focus-visible,
+    .forward-button:focus-visible,
     .thought-input:focus-visible {
       outline: 3px solid #111;
       outline-offset: 4px;
@@ -88,7 +109,17 @@
       display: grid;
       grid-template-rows: minmax(0, 1fr) auto;
       padding: 82px 28px 24px;
-      background: #fff;
+      background: transparent;
+    }
+
+    .green-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: var(--green);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease-out;
     }
 
     .result-area[hidden],
@@ -97,6 +128,8 @@
     }
 
     .result-image-wrap {
+      position: relative;
+      z-index: 1;
       display: grid;
       place-items: center;
       min-height: 0;
@@ -225,6 +258,8 @@
     }
 
     .result-text {
+      position: relative;
+      z-index: 1;
       width: 100%;
       margin: 0;
       color: #050505;
@@ -260,6 +295,16 @@
         padding: 18px;
       }
 
+      .back-button {
+        top: 18px;
+        left: 18px;
+      }
+
+      .forward-button {
+        top: 18px;
+        right: 18px;
+      }
+
       .thought-input {
         width: min(82vw, 520px);
         height: 112px;
@@ -276,6 +321,10 @@
       <img src="./button_l.png" alt="">
     </button>
 
+    <button class="forward-button" type="button" aria-label="다음 단계로 이동">
+      <img src="./button_r.png" alt="">
+    </button>
+
     <section class="input-area" aria-label="생각 입력 영역">
       <input
         class="thought-input"
@@ -289,6 +338,7 @@
     </section>
 
     <section class="result-area" id="resultArea" aria-label="입력한 생각 결과" hidden>
+      <div class="green-overlay" id="greenOverlay" aria-hidden="true"></div>
       <div class="result-image-wrap">
         <img
           class="result-image"
@@ -322,8 +372,10 @@
   <script>
     const thoughtInput = document.querySelector('#thoughtInput');
     const backButton = document.querySelector('.back-button');
+    const forwardButton = document.querySelector('.forward-button');
     const inputArea = document.querySelector('.input-area');
     const resultArea = document.querySelector('#resultArea');
+    const greenOverlay = document.querySelector('#greenOverlay');
     const dozenImage = document.querySelector('#dozenImage');
     const beanBurst = document.querySelector('#beanBurst');
     const s01Screen = document.querySelector('#s01Screen');
@@ -349,6 +401,7 @@
     let fallingStarted = false;
     let fallingAnimationFrame = null;
     let fallingObjects = [];
+    const greenOpacityStep = 0.2;
 
     // 이전에 입력한 내용을 다시 불러옵니다.
     thoughtInput.value = localStorage.getItem(storageKey) || '';
@@ -360,6 +413,63 @@
 
     // 다른 페이지에서 window.getThoughtText()로 현재 입력값을 읽을 수 있습니다.
     window.getThoughtText = () => thoughtInput.value;
+
+    function clearFallingStage() {
+      if (fallingAnimationFrame !== null) {
+        window.cancelAnimationFrame(fallingAnimationFrame);
+        fallingAnimationFrame = null;
+      }
+
+      fallingStarted = false;
+      fallingObjects = [];
+      fallingLayer.replaceChildren();
+      s01Image.classList.remove('is-hidden');
+    }
+
+    function showDozenStage() {
+      if (beanTransitionTimer !== null) {
+        window.clearTimeout(beanTransitionTimer);
+        beanTransitionTimer = null;
+      }
+
+      beanTransitionPending = false;
+      beanInteractionReady = false;
+      clearFallingStage();
+      s01Screen.hidden = true;
+      inputArea.hidden = true;
+      resultArea.hidden = false;
+      burstStarted = false;
+      dozenClickCount = 0;
+      dozenImage.classList.remove('is-gone');
+      dozenImage.style.transform = 'rotate(0deg)';
+      beanBurst.replaceChildren();
+      beanBurst.hidden = false;
+      greenOverlay.style.opacity = '0';
+      burstSound.pause();
+      burstSound.currentTime = 0;
+      beanSound.pause();
+      beanSound.currentTime = 0;
+    }
+
+    function showS01Stage() {
+      if (beanTransitionTimer !== null) {
+        window.clearTimeout(beanTransitionTimer);
+        beanTransitionTimer = null;
+      }
+
+      beanTransitionPending = false;
+      beanInteractionReady = false;
+      clearFallingStage();
+      beanBurst.hidden = true;
+      inputArea.hidden = true;
+      resultArea.hidden = true;
+      s01Screen.hidden = false;
+      s01Image.classList.remove('is-hidden');
+      burstSound.pause();
+      burstSound.currentTime = 0;
+      beanSound.pause();
+      beanSound.currentTime = 0;
+    }
 
     function showResult() {
       const text = thoughtInput.value.trim();
@@ -400,13 +510,7 @@
 
       resultTransitionPending = false;
       beanTransitionPending = false;
-      beanInteractionReady = false;
-      fallingStarted = false;
-      if (fallingAnimationFrame !== null) {
-        window.cancelAnimationFrame(fallingAnimationFrame);
-        fallingAnimationFrame = null;
-      }
-      fallingObjects = [];
+      clearFallingStage();
       resultArea.hidden = true;
       inputArea.hidden = false;
       s01Screen.hidden = true;
@@ -415,6 +519,7 @@
       burstStarted = false;
       dozenImage.classList.remove('is-gone');
       dozenImage.style.transform = 'rotate(0deg)';
+      greenOverlay.style.opacity = '0';
       beanBurst.replaceChildren();
       beanBurst.hidden = false;
       fallingLayer.replaceChildren();
@@ -655,6 +760,7 @@
       dozenClickCount += 1;
       const rotation = clickRotations[dozenClickCount - 1];
       dozenImage.style.transform = `rotate(${rotation}deg)`;
+      greenOverlay.style.opacity = `${Math.min(dozenClickCount * greenOpacityStep, 1)}`;
 
       if (dozenClickCount < 12) {
         return;
@@ -684,6 +790,24 @@
 
     s01Image.addEventListener('click', startFallingObjects);
 
+    forwardButton.addEventListener('click', () => {
+      if (!inputArea.hidden) {
+        showResult();
+        return;
+      }
+
+      if (!s01Screen.hidden) {
+        if (!fallingStarted) {
+          startFallingObjects();
+        }
+        return;
+      }
+
+      if (!resultArea.hidden) {
+        showS01Stage();
+      }
+    });
+
     thoughtInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -692,6 +816,16 @@
     });
 
     backButton.addEventListener('click', () => {
+      if (!s01Screen.hidden) {
+        if (fallingStarted) {
+          clearFallingStage();
+          return;
+        }
+
+        showDozenStage();
+        return;
+      }
+
       if (!resultArea.hidden) {
         showInput();
         return;
