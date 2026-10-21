@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>생각 입력</title>
+  <title>어떤 생각을 하니?</title>
 
   <style>
     @font-face {
@@ -72,7 +72,8 @@
       cursor: pointer;
     }
 
-    .back-button img {
+    .back-button img,
+    .forward-button img {
       display: block;
       width: 100%;
       height: 100%;
@@ -548,6 +549,7 @@
       let completedParticles = 0;
 
       beanInteractionReady = false;
+      greenOverlay.style.opacity = '0';
 
       for (let index = 0; index < particleCount; index += 1) {
         const angle = (Math.PI * 2 * index) / particleCount + (Math.random() - 0.5) * 0.28;
@@ -760,7 +762,8 @@
       dozenClickCount += 1;
       const rotation = clickRotations[dozenClickCount - 1];
       dozenImage.style.transform = `rotate(${rotation}deg)`;
-      greenOverlay.style.opacity = `${Math.min(dozenClickCount * greenOpacityStep, 1)}`;
+      const opacityClickCount = Math.max(dozenClickCount - 4, 0);
+      greenOverlay.style.opacity = `${Math.min(opacityClickCount * greenOpacityStep, 1)}`;
 
       if (dozenClickCount < 12) {
         return;
@@ -816,6 +819,11 @@
     });
 
     backButton.addEventListener('click', () => {
+      if (!inputArea.hidden) {
+        window.location.href = './index.html';
+        return;
+      }
+
       if (!s01Screen.hidden) {
         if (fallingStarted) {
           clearFallingStage();
