@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>맥주</title>
+  <style>
+    @font-face {
+      font-family: 'SlowGothic';
+      src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2304-01@1.0/neurimboGothicRegular.woff2') format('woff2');
+      font-weight: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --green: #43f000;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      overflow: hidden;
+      background: #fff;
+      color: #050505;
+      font-family: 'SlowGothic', sans-serif;
+    }
+
+    .page {
+      position: relative;
+      display: grid;
+      min-height: 100vh;
+      padding: 28px;
+      border: 4px solid #e4e4e4;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .nav-button {
+      position: absolute;
+      top: 28px;
+      z-index: 10;
+      display: block;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .nav-button.left {
+      left: 28px;
+    }
+
+    .nav-button.right {
+      right: 28px;
+    }
+
+    .nav-button img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .nav-button:hover {
+      transform: scale(1.06);
+    }
+
+    .nav-button:focus-visible {
+      outline: 3px solid #111;
+      outline-offset: 4px;
+    }
+
+    .can-stage {
+      position: relative;
+      display: grid;
+      width: min(63.25vw, 850px, 94.3vh);
+      height: min(63.25vw, 850px, 94.3vh);
+      place-items: center;
+    }
+
+    .can-circle {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: 50%;
+      background: var(--green);
+      transform: scale(1);
+      transform-origin: center;
+      transition: transform 680ms cubic-bezier(0.22, 0.8, 0.26, 1);
+      will-change: transform;
+    }
+
+    .can-stage.is-shrunk .can-circle {
+      transform: scale(0.58);
+    }
+
+    .can-image {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: 1;
+      display: block;
+      width: auto;
+      height: min(115vh, 690px);
+      max-width: 78%;
+      object-fit: contain;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-drag: none;
+      transition: transform 680ms cubic-bezier(0.22, 0.8, 0.26, 1), opacity 220ms ease;
+      transform: translate(-50%, -50%);
+      transform-origin: center;
+      will-change: transform, opacity;
+    }
+
+    .can-stage.is-shrunk .can-image {
+      transform: translate(-50%, -50%) scale(1.07);
+    }
+
+    .can-stage.is-complete .can-circle,
+    .can-stage.is-complete .can-image {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .can-close-image {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: 2;
+      display: block;
+      width: min(78vw, 840px);
+      max-height: 78vh;
+      object-fit: contain;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      transition: opacity 260ms ease;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .can-close-image.is-visible {
+      opacity: 1;
+    }
+
+    @media (max-width: 600px) {
+      .page {
+        padding: 18px;
+      }
+
+      .nav-button {
+        top: 18px;
+      }
+
+      .nav-button.left {
+        left: 18px;
+      }
+
+      .nav-button.right {
+        right: 18px;
+      }
+
+      .can-stage {
+        width: min(94.3vw, 94.3vh);
+        height: min(94.3vw, 94.3vh);
+      }
+
+      .can-image {
+        height: min(76vh, 495px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <button class="nav-button left" type="button" aria-label="낙하 화면으로 돌아가기">
+      <img src="./button_l.png" alt="">
+    </button>
+
+    <button class="nav-button right" type="button" aria-label="다음 페이지로 이동">
+      <img src="./button_r.png" alt="">
+    </button>
+
+    <section class="can-stage" aria-label="맥주 캔">
+      <div class="can-circle" aria-hidden="true"></div>
+      <img class="can-image" src="./beer/can1.png" alt="맥주 캔">
+    </section>
+
+    <img class="can-close-image" src="./beer/canclose.png" alt="캔 뚜껑 확대 이미지" aria-hidden="true">
+  </main>
+
+  <audio id="pipSound" src="sound/pip.mp3" preload="auto"></audio>
+
+  <script>
+    const canStage = document.querySelector('.can-stage');
+    const canImage = document.querySelector('.can-image');
+    const canCloseImage = document.querySelector('.can-close-image');
+    const pipSound = document.querySelector('#pipSound');
+    let canClickStarted = false;
+
+    document.querySelector('.nav-button.left').addEventListener('click', () => {
+      window.location.href = './1.html?stage=falling';
+    });
+
+    document.querySelector('.nav-button.right').addEventListener('click', () => {
+      window.location.href = './3.html';
+    });
+
+    canImage.addEventListener('click', () => {
+      if (canClickStarted) {
+        return;
+      }
+
+      canClickStarted = true;
+      canStage.classList.add('is-shrunk');
+      pipSound.currentTime = 0;
+      pipSound.play().catch((error) => {
+        console.error('sound/pip.mp3 재생 실패:', error);
+      });
+
+      window.setTimeout(() => {
+        canStage.classList.add('is-complete');
+
+        window.setTimeout(() => {
+          canCloseImage.classList.add('is-visible');
+        }, 500);
+      }, 680);
+    });
+  </script>
+</body>
+</html>

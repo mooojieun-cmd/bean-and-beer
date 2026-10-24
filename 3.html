@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>맥주 마시기</title>
+  <style>
+    @font-face {
+      font-family: 'SlowGothic';
+      src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2304-01@1.0/neurimboGothicRegular.woff2') format('woff2');
+      font-weight: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --green: #43f000;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      overflow: hidden;
+      background: var(--green);
+      color: #050505;
+      font-family: 'SlowGothic', sans-serif;
+    }
+
+    .page {
+      position: relative;
+      display: grid;
+      min-height: 100vh;
+      padding: 28px;
+      border: 4px solid #e4e4e4;
+      place-items: center;
+      overflow: hidden;
+      background: var(--green);
+    }
+
+    .nav-button {
+      position: absolute;
+      top: 28px;
+      z-index: 20;
+      display: block;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .nav-button.left {
+      left: 28px;
+    }
+
+    .nav-button.right {
+      right: 28px;
+    }
+
+    .nav-button img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .nav-button:hover {
+      transform: scale(1.06);
+    }
+
+    .nav-button:focus-visible {
+      outline: 3px solid #111;
+      outline-offset: 4px;
+    }
+
+    .camera-frame {
+      position: relative;
+      width: min(70vw, 850px);
+      aspect-ratio: 5 / 3;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .camera-video {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      background: #fff;
+    }
+
+    .glass-overlay {
+      position: absolute;
+      z-index: 3;
+      display: block;
+      width: clamp(76px, 11vw, 150px);
+      height: auto;
+      opacity: 0;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      transform: translate(-50%, -50%);
+      transform-origin: center;
+      transition: opacity 160ms ease, left 90ms linear, top 90ms linear, width 120ms ease;
+    }
+
+    .glass-overlay.is-visible {
+      opacity: 1;
+    }
+
+    .camera-status {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      z-index: 5;
+      margin: 0;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #111;
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.2;
+      transform: translateX(-50%);
+    }
+
+    .camera-status:empty {
+      display: none;
+    }
+
+    @media (max-width: 600px) {
+      .page {
+        padding: 18px;
+      }
+
+      .nav-button {
+        top: 18px;
+      }
+
+      .nav-button.left {
+        left: 18px;
+      }
+
+      .nav-button.right {
+        right: 18px;
+      }
+
+      .camera-frame {
+        width: min(92vw, 850px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <button class="nav-button left" type="button" aria-label="2.html로 돌아가기">
+      <img src="./button_l.png" alt="">
+    </button>
+
+    <button class="nav-button right" type="button" aria-label="다음 페이지로 이동">
+      <img src="./button_r.png" alt="">
+    </button>
+
+    <section class="camera-frame" aria-label="얼굴과 손 인식 카메라">
+      <video id="cameraVideo" class="camera-video" autoplay muted playsinline></video>
+      <img id="glassOverlay" class="glass-overlay" src="./beer/glass.png" alt="손에 든 유리잔">
+      <p id="cameraStatus" class="camera-status" aria-live="polite">카메라를 준비하는 중...</p>
+    </section>
+  </main>
+
+  <script type="module">
+    const cameraVideo = document.querySelector('#cameraVideo');
+    const cameraFrame = document.querySelector('.camera-frame');
+    const glassOverlay = document.querySelector('#glassOverlay');
+    const cameraStatus = document.querySelector('#cameraStatus');
+    const backButton = document.querySelector('.nav-button.left');
+    const forwardButton = document.querySelector('.nav-button.right');
+
+    const handModelUrl = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+    const faceModelUrl = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+    const wasmUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm';
+    const visionBundleUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs';
+
+    let handLandmarker = null;
+    let faceLandmarker = null;
+    let cameraStream = null;
+    let lastVideoTime = -1;
+    let animationFrameId = null;
+
+    backButton.addEventListener('click', () => {
+      window.location.href = './2.html';
+    });
+
+    forwardButton.addEventListener('click', () => {
+      window.history.forward();
+    });
+
+    function setStatus(message) {
+      cameraStatus.textContent = message;
+    }
+
+    function distance(first, second) {
+      return Math.hypot(first.x - second.x, first.y - second.y);
+    }
+
+    function toFramePoint(landmark) {
+      const frameWidth = cameraFrame.clientWidth;
+      const frameHeight = cameraFrame.clientHeight;
+      const sourceWidth = cameraVideo.videoWidth || frameWidth;
+      const sourceHeight = cameraVideo.videoHeight || frameHeight;
+      const sourceRatio = sourceWidth / sourceHeight;
+      const frameRatio = frameWidth / frameHeight;
+
+      let renderedWidth = frameWidth;
+      let renderedHeight = frameHeight;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      if (sourceRatio > frameRatio) {
+        renderedHeight = frameHeight;
+        renderedWidth = renderedHeight * sourceRatio;
+        offsetX = (frameWidth - renderedWidth) / 2;
+      } else {
+        renderedWidth = frameWidth;
+        renderedHeight = renderedWidth / sourceRatio;
+        offsetY = (frameHeight - renderedHeight) / 2;
+      }
+
+      return {
+        x: (1 - landmark.x) * renderedWidth + offsetX,
+        y: landmark.y * renderedHeight + offsetY
+      };
+    }
+
+    function hideGlass() {
+      glassOverlay.classList.remove('is-visible');
+    }
+
+    function updateGlass(handResult, faceResult) {
+      const hasFace = faceResult.faceLandmarks.length > 0;
+      const hand = handResult.landmarks[0];
+
+      if (!hasFace || !hand) {
+        hideGlass();
+        return;
+      }
+
+      const palm = [hand[0], hand[5], hand[9], hand[13], hand[17]];
+      const palmCenter = palm.reduce((center, landmark) => ({
+        x: center.x + landmark.x / palm.length,
+        y: center.y + landmark.y / palm.length
+      }), { x: 0, y: 0 });
+      const palmPoint = toFramePoint(palmCenter);
+      const indexBasePoint = toFramePoint(hand[5]);
+      const pinkyBasePoint = toFramePoint(hand[17]);
+      const palmWidth = distance(indexBasePoint, pinkyBasePoint);
+      const glassWidth = Math.max(76, Math.min(150, palmWidth * 1.2));
+
+      glassOverlay.style.left = `${palmPoint.x}px`;
+      glassOverlay.style.top = `${palmPoint.y + glassWidth * 0.18}px`;
+      glassOverlay.style.width = `${glassWidth}px`;
+      glassOverlay.classList.add('is-visible');
+    }
+
+    async function createVisionTasks() {
+      const { FaceLandmarker, FilesetResolver, HandLandmarker } = await import(visionBundleUrl);
+      const vision = await FilesetResolver.forVisionTasks(wasmUrl);
+
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: handModelUrl },
+        runningMode: 'VIDEO',
+        numHands: 1,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: faceModelUrl },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+        minFaceDetectionConfidence: 0.5,
+        minFacePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('이 브라우저에서는 카메라를 사용할 수 없습니다.');
+      }
+
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+      cameraVideo.srcObject = cameraStream;
+      await cameraVideo.play();
+    }
+
+    function detectFrame() {
+      if (cameraVideo.readyState >= 2 && cameraVideo.currentTime !== lastVideoTime) {
+        const timestamp = performance.now();
+        const handResult = handLandmarker.detectForVideo(cameraVideo, timestamp);
+        const faceResult = faceLandmarker.detectForVideo(cameraVideo, timestamp);
+        updateGlass(handResult, faceResult);
+        lastVideoTime = cameraVideo.currentTime;
+      }
+
+      animationFrameId = window.requestAnimationFrame(detectFrame);
+    }
+
+    async function initialize() {
+      try {
+        await createVisionTasks();
+        await startCamera();
+        setStatus('');
+        detectFrame();
+      } catch (error) {
+        console.error('카메라 또는 얼굴·손 인식 초기화 실패:', error);
+        setStatus('카메라 권한을 허용하고 HTTPS 또는 localhost에서 열어주세요.');
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      cameraStream?.getTracks().forEach((track) => track.stop());
+      handLandmarker?.close();
+      faceLandmarker?.close();
+    });
+
+    initialize();
+  </script>
+</body>
+</html>

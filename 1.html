@@ -402,6 +402,9 @@
     let fallingStarted = false;
     let fallingAnimationFrame = null;
     let fallingObjects = [];
+    let fallingClickCount = 0;
+    let fallingPageTransitionCleanup = null;
+    let fallingPageTransitionPending = false;
     const greenOpacityStep = 0.2;
 
     // 이전에 입력한 내용을 다시 불러옵니다.
@@ -421,8 +424,15 @@
         fallingAnimationFrame = null;
       }
 
+      if (fallingPageTransitionCleanup !== null) {
+        fallingPageTransitionCleanup();
+        fallingPageTransitionCleanup = null;
+      }
+
       fallingStarted = false;
       fallingObjects = [];
+      fallingClickCount = 0;
+      fallingPageTransitionPending = false;
       fallingLayer.replaceChildren();
       s01Image.classList.remove('is-hidden');
     }
@@ -599,16 +609,49 @@
     }
 
     function removeFallingObject(fallingObject) {
-      if (fallingObject.removed) {
+      if (fallingObject.removed || fallingPageTransitionPending) {
         return;
       }
 
       fallingObject.removed = true;
+      fallingClickCount += 1;
       const eatingAudio = Math.random() < 0.5 ? eatingSound : eatingSound2;
+      let finishPageTransition = null;
+
+      if (fallingClickCount >= 7) {
+        fallingPageTransitionPending = true;
+
+        const cleanupPageTransition = () => {
+          eatingAudio.removeEventListener('ended', finishPageTransition);
+          eatingAudio.removeEventListener('error', finishPageTransition);
+
+          if (fallingPageTransitionCleanup === cleanupPageTransition) {
+            fallingPageTransitionCleanup = null;
+          }
+        };
+
+        finishPageTransition = () => {
+          if (!fallingPageTransitionPending) {
+            return;
+          }
+
+          fallingPageTransitionPending = false;
+          cleanupPageTransition();
+          window.location.href = './2.html';
+        };
+
+        fallingPageTransitionCleanup = cleanupPageTransition;
+        eatingAudio.addEventListener('ended', finishPageTransition);
+        eatingAudio.addEventListener('error', finishPageTransition);
+      }
 
       eatingAudio.currentTime = 0;
       eatingAudio.play().catch((error) => {
         console.error('eating sound 재생 실패:', error);
+
+        if (finishPageTransition !== null) {
+          finishPageTransition();
+        }
       });
       fallingObject.element.remove();
     }
@@ -619,6 +662,8 @@
       }
 
       fallingStarted = true;
+      fallingClickCount = 0;
+      fallingPageTransitionPending = false;
       s01Image.classList.add('is-hidden');
       pop1Sound.currentTime = 0;
       pop1Sound.play().catch((error) => {
@@ -843,6 +888,11 @@
         window.history.back();
       }
     });
+
+    if (new URLSearchParams(window.location.search).get('stage') === 'falling') {
+      showS01Stage();
+      startFallingObjects();
+    }
   </script>
 </body>
 </html>
