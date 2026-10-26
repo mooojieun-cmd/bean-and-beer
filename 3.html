@@ -436,11 +436,7 @@
     }
 
     .late-shred-stage.is-transforming {
-      background: linear-gradient(
-        to bottom,
-        rgba(67, 240, 0, 0) 42%,
-        rgba(67, 240, 0, 0.34) 100%
-      ), #fff;
+      background: #ff0000;
     }
 
     .late-shred-stage.is-transforming .late-shred-piece {
@@ -468,6 +464,38 @@
     .late-shred-stage.is-transforming .late-shred-bean.is-removed {
       opacity: 0 !important;
       pointer-events: none;
+    }
+
+    .late-shred-stage.is-wave-active {
+      overflow: visible;
+      background: transparent;
+    }
+
+    .late-shred-stage.is-wave-active #lateShredPieces {
+      visibility: hidden;
+    }
+
+    .late-horizontal-wave {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: none;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .late-horizontal-wave.is-visible {
+      display: block;
+    }
+
+    .late-horizontal-wave-strip {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      overflow: hidden;
+      background-color: #ff0000;
+      background-repeat: no-repeat;
+      will-change: transform;
     }
 
     @media (max-width: 600px) {
@@ -532,6 +560,7 @@
       </div>
       <div id="lateShredStage" class="late-shred-stage" aria-hidden="true">
         <div id="lateShredPieces" aria-hidden="true"></div>
+        <div id="lateHorizontalWave" class="late-horizontal-wave" aria-hidden="true"></div>
       </div>
     </div>
   </main>
@@ -566,6 +595,7 @@
     const shredder = document.querySelector('.shredder');
     const lateShredStage = document.querySelector('#lateShredStage');
     const lateShredPieces = document.querySelector('#lateShredPieces');
+    const lateHorizontalWave = document.querySelector('#lateHorizontalWave');
 
     if (new URLSearchParams(window.location.search).get('enter') === 'slide') {
       page.classList.add('page-enter-slide');
@@ -619,6 +649,7 @@
     let lateEllipseClickCount = 0;
     let lateShredNextPageTimer = null;
     let lateShredNextPageWaiting = false;
+    let lateHorizontalWaveFrame = null;
     const lateShredTransformDuration = 1800;
     const latePointerForceMultiplier = 3;
     let glassCanvas = null;
@@ -679,6 +710,160 @@
       return sound;
     }
 
+    function getLateElementRotation(element) {
+      const transform = window.getComputedStyle(element).transform;
+
+      if (!transform || transform === 'none') {
+        return 0;
+      }
+
+      const values = transform.match(/matrix(?:3d)?\(([^)]+)\)/)?.[1]
+        .split(',')
+        .map(Number);
+
+      if (!values || values.some(Number.isNaN)) {
+        return 0;
+      }
+
+      return Math.atan2(values[1], values[0]);
+    }
+
+    function drawLateShredWaveSnapshot() {
+      const width = Math.max(1, Math.round(lateShredStage.clientWidth));
+      const height = Math.max(1, Math.round(lateShredStage.clientHeight));
+      const snapshotCanvas = document.createElement('canvas');
+      const snapshotContext = snapshotCanvas.getContext('2d');
+
+      snapshotCanvas.width = width;
+      snapshotCanvas.height = height;
+      snapshotContext.fillStyle = '#ff0000';
+      snapshotContext.fillRect(0, 0, width, height);
+
+      const stageRect = lateShredStage.getBoundingClientRect();
+      const drawableItems = [...lateShredPieces.children]
+        .filter((element) => element.isConnected && Number.parseFloat(window.getComputedStyle(element).opacity) > 0)
+        .sort((first, second) => {
+          const firstZIndex = Number.parseInt(window.getComputedStyle(first).zIndex, 10) || 0;
+          const secondZIndex = Number.parseInt(window.getComputedStyle(second).zIndex, 10) || 0;
+          return firstZIndex - secondZIndex;
+        });
+
+      drawableItems.forEach((element) => {
+        const elementRect = element.getBoundingClientRect();
+        const elementWidth = element.offsetWidth;
+        const elementHeight = element.offsetHeight;
+
+        if (!elementWidth || !elementHeight) {
+          return;
+        }
+
+        const centerX = elementRect.left - stageRect.left + elementRect.width / 2;
+        const centerY = elementRect.top - stageRect.top + elementRect.height / 2;
+        const rotation = getLateElementRotation(element);
+
+        snapshotContext.save();
+        snapshotContext.translate(centerX, centerY);
+        snapshotContext.rotate(rotation);
+
+        if (element.matches('.late-shred-piece')) {
+          snapshotContext.fillStyle = '#43f000';
+          snapshotContext.fillRect(-elementWidth / 2, -elementHeight / 2, elementWidth, elementHeight);
+
+          const pieceCanvas = element.querySelector('canvas');
+          if (pieceCanvas) {
+            snapshotContext.drawImage(
+              pieceCanvas,
+              -elementWidth / 2,
+              -elementHeight / 2,
+              elementWidth,
+              elementHeight
+            );
+          }
+        } else if (element.matches('.late-shred-bean') && element.complete && element.naturalWidth) {
+          snapshotContext.drawImage(
+            element,
+            -elementWidth / 2,
+            -elementHeight / 2,
+            elementWidth,
+            elementHeight
+          );
+        }
+
+        snapshotContext.restore();
+      });
+
+      return {
+        imageUrl: snapshotCanvas.toDataURL('image/png'),
+        width,
+        height
+      };
+    }
+
+    function finishLateHorizontalWave() {
+      lateHorizontalWaveFrame = null;
+      lateHorizontalWave.classList.remove('is-visible');
+      lateHorizontalWave.replaceChildren();
+      lateShredStage.classList.remove('is-wave-active');
+    }
+
+    function startLateHorizontalWave() {
+      const snapshot = drawLateShredWaveSnapshot();
+
+      if (!snapshot) {
+        return;
+      }
+
+      if (lateHorizontalWaveFrame !== null) {
+        window.cancelAnimationFrame(lateHorizontalWaveFrame);
+        finishLateHorizontalWave();
+      }
+
+      const rowCount = Math.max(18, Math.min(32, Math.round(snapshot.height / 28)));
+      const rowHeight = snapshot.height / rowCount;
+      const strips = [];
+
+      for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+        const top = rowIndex * rowHeight;
+        const strip = document.createElement('div');
+        strip.className = 'late-horizontal-wave-strip';
+        strip.style.top = `${top}px`;
+        strip.style.height = `${rowHeight + 1}px`;
+        strip.style.backgroundImage = `url(${snapshot.imageUrl})`;
+        strip.style.backgroundSize = `${snapshot.width}px ${snapshot.height}px`;
+        strip.style.backgroundPosition = `0 -${top}px`;
+        lateHorizontalWave.appendChild(strip);
+        strips.push(strip);
+      }
+
+      lateShredStage.classList.add('is-wave-active');
+      lateHorizontalWave.classList.add('is-visible');
+
+      const startedAt = performance.now();
+      const duration = 820;
+      const amplitude = Math.min(44, 12 + lateEllipseClickCount * 4);
+
+      const animateWave = (timestamp) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const envelope = Math.sin(progress * Math.PI);
+        const phase = progress * Math.PI * 4.6;
+
+        strips.forEach((strip, rowIndex) => {
+          const rowPhase = (rowIndex / rowCount) * Math.PI * 2.6;
+          const offsetX = Math.sin(phase + rowPhase) * amplitude * envelope;
+          strip.style.transform = `translate3d(${offsetX}px, 0, 0)`;
+        });
+
+        if (progress < 1) {
+          lateHorizontalWaveFrame = window.requestAnimationFrame(animateWave);
+          return;
+        }
+
+        finishLateHorizontalWave();
+      };
+
+      lateHorizontalWaveFrame = window.requestAnimationFrame(animateWave);
+    }
+
     function handleLateEllipseClick(event) {
       if (!lateShredTransformStarted || event.currentTarget.classList.contains('is-removed')) {
         return;
@@ -687,9 +872,10 @@
       event.stopPropagation();
       lateEllipseClickCount += 1;
       event.currentTarget.remove();
+      startLateHorizontalWave();
 
       let navigateAfterSound = null;
-      if (lateEllipseClickCount >= 5 && !lateShredNextPageWaiting) {
+      if (lateEllipseClickCount >= 8 && !lateShredNextPageWaiting) {
         lateShredNextPageWaiting = true;
         navigateAfterSound = () => {
           if (lateShredNextPageTimer !== null) {
@@ -1449,6 +1635,48 @@
       return { width, height };
     }
 
+    function drawThoughtTextIntoShredSource() {
+      if (!thoughtWave.classList.contains('is-visible')) {
+        return;
+      }
+
+      const frameRect = cameraFrame.getBoundingClientRect();
+      const sourceWidth = shredSourceCanvas.width;
+      const sourceHeight = shredSourceCanvas.height;
+
+      if (!frameRect.width || !frameRect.height || !sourceWidth || !sourceHeight) {
+        return;
+      }
+
+      const scaleX = sourceWidth / frameRect.width;
+      const scaleY = sourceHeight / frameRect.height;
+
+      // 파쇄 캔버스는 실제 화면과 함께 좌우 반전되어 표시되므로,
+      // 텍스트를 한 번 반전해서 그려야 화면에서는 정상 방향으로 보입니다.
+      shredSourceContext.save();
+      shredSourceContext.translate(sourceWidth, 0);
+      shredSourceContext.scale(-1, 1);
+      shredSourceContext.textBaseline = 'top';
+
+      thoughtWave.querySelectorAll('.thought-wave-letter').forEach((letter) => {
+        const letterRect = letter.getBoundingClientRect();
+        const style = window.getComputedStyle(letter);
+        const fontSize = Number.parseFloat(style.fontSize) * scaleX;
+        const x = (letterRect.left - frameRect.left) * scaleX;
+        const y = (letterRect.top - frameRect.top) * scaleY;
+
+        if (!fontSize || !letter.textContent) {
+          return;
+        }
+
+        shredSourceContext.font = `${style.fontStyle} ${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+        shredSourceContext.fillStyle = style.color;
+        shredSourceContext.fillText(letter.textContent, x, y);
+      });
+
+      shredSourceContext.restore();
+    }
+
     function captureShredSource() {
       if (!waveCamera.width || !waveCamera.height) {
         return false;
@@ -1475,6 +1703,9 @@
         );
         shredSourceContext.globalCompositeOperation = 'source-over';
       }
+
+      // 별도 HTML 레이어인 생각 문구도 캡처본에 합쳐서 함께 파쇄합니다.
+      drawThoughtTextIntoShredSource();
 
       // 캡처가 끝난 뒤에는 뒤에 남은 라이브 화면의 모션 인식을 멈춥니다.
       motionCaptureStopped = true;
