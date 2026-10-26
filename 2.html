@@ -147,13 +147,50 @@
       opacity: 0;
       pointer-events: none;
       transform: translate(-50%, -50%);
-      transition: opacity 260ms ease;
+      transition: opacity 260ms ease, transform 600ms ease;
       user-select: none;
       -webkit-user-drag: none;
     }
 
     .can-close-image.is-visible {
       opacity: 1;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .can-close-image.is-rotating {
+      transform: translate(-50%, -50%) rotate(-90deg);
+    }
+
+    .beer-gif-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      width: 100vw;
+      height: 100vh;
+      background: #fff;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .beer-gif-screen.is-visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .beer-gif-screen img {
+      display: block;
+      width: min(1500px, 100vw);
+      max-width: 100%;
+      height: auto;
+      max-height: 100vh;
+      object-fit: contain;
+      user-select: none;
+      -webkit-user-drag: none;
     }
 
     @media (max-width: 600px) {
@@ -199,17 +236,32 @@
       <img class="can-image" src="./beer/can1.png" alt="맥주 캔">
     </section>
 
-    <img class="can-close-image" src="./beer/canclose.png" alt="캔 뚜껑 확대 이미지" aria-hidden="true">
+    <img class="can-close-image" src="./beer/canclose.png" alt="캔 뚜껑 확대 이미지" role="button" tabindex="0">
+
+    <div class="beer-gif-screen" id="beerGifScreen" aria-hidden="true">
+      <img id="beerGifImage" src="./beer/beer111.gif" alt="맥주 애니메이션">
+    </div>
   </main>
 
-  <audio id="pipSound" src="sound/pip.mp3" preload="auto"></audio>
+  <audio id="openSound" src="sound/open.mp3" preload="auto"></audio>
+  <audio id="p1Sound" src="sound/p1.mp3" preload="auto"></audio>
+  <audio id="sodaFizzingSound" src="sound/soda-fizzing.mp3" preload="auto"></audio>
+  <audio id="canCloseSound" src="sound/5.mp3" preload="auto"></audio>
 
   <script>
     const canStage = document.querySelector('.can-stage');
     const canImage = document.querySelector('.can-image');
     const canCloseImage = document.querySelector('.can-close-image');
-    const pipSound = document.querySelector('#pipSound');
+    const beerGifScreen = document.querySelector('#beerGifScreen');
+    const beerGifImage = document.querySelector('#beerGifImage');
+    const openSound = document.querySelector('#openSound');
+    const p1Sound = document.querySelector('#p1Sound');
+    const sodaFizzingSound = document.querySelector('#sodaFizzingSound');
+    const canCloseSound = document.querySelector('#canCloseSound');
+    const beerGifDuration = 11840;
+    const canCloseRotationDuration = 600;
     let canClickStarted = false;
+    let canCloseClickStarted = false;
 
     document.querySelector('.nav-button.left').addEventListener('click', () => {
       window.location.href = './1.html?stage=falling';
@@ -226,9 +278,9 @@
 
       canClickStarted = true;
       canStage.classList.add('is-shrunk');
-      pipSound.currentTime = 0;
-      pipSound.play().catch((error) => {
-        console.error('sound/pip.mp3 재생 실패:', error);
+      openSound.currentTime = 0;
+      openSound.play().catch((error) => {
+        console.error('sound/open.mp3 재생 실패:', error);
       });
 
       window.setTimeout(() => {
@@ -238,6 +290,56 @@
           canCloseImage.classList.add('is-visible');
         }, 500);
       }, 680);
+    });
+
+    canCloseImage.addEventListener('click', () => {
+      if (!canCloseImage.classList.contains('is-visible') || canCloseClickStarted) {
+        return;
+      }
+
+      canCloseClickStarted = true;
+      canCloseImage.classList.add('is-rotating');
+
+      const showBeerGif = () => {
+        beerGifScreen.classList.add('is-visible');
+
+        beerGifImage.addEventListener('load', () => {
+          window.setTimeout(() => {
+            // GIF가 끝난 뒤 바로 3.html의 슬라이드인 화면으로 넘어갑니다.
+            // GIF 레이어를 투명하게 만들지 않아 canclose.png가 다시 노출되지 않습니다.
+            window.location.href = './3.html?enter=slide';
+          }, beerGifDuration);
+        }, { once: true });
+
+        // 같은 GIF를 다시 재생할 수 있도록 클릭 순간에 새 URL로 불러옵니다.
+        beerGifImage.src = `./beer/beer111.gif?play=${Date.now()}`;
+        p1Sound.currentTime = 0;
+        p1Sound.play().catch((error) => {
+          console.error('sound/p1.mp3 재생 실패:', error);
+        });
+
+        window.setTimeout(() => {
+          sodaFizzingSound.currentTime = 0;
+          sodaFizzingSound.play().catch((error) => {
+            console.error('sound/soda-fizzing.mp3 재생 실패:', error);
+          });
+        }, 1000);
+      };
+
+      canCloseSound.addEventListener('ended', showBeerGif, { once: true });
+      canCloseSound.currentTime = 0;
+      canCloseSound.play().catch((error) => {
+        console.error('sound/5.mp3 재생 실패:', error);
+        // 오디오 재생이 차단된 경우에도 화면 전환이 멈추지 않도록 합니다.
+        window.setTimeout(showBeerGif, canCloseRotationDuration);
+      });
+    });
+
+    canCloseImage.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        canCloseImage.click();
+      }
     });
   </script>
 </body>

@@ -369,6 +369,7 @@
   <audio id="clickSound" src="sound/click.mp3" preload="auto"></audio>
   <audio id="burstSound" src="sound/2.mp3" preload="auto"></audio>
   <audio id="beanSound" src="sound/beansound.mp3" preload="auto"></audio>
+  <audio id="transitionSound" src="sound/3.mp3" preload="auto"></audio>
 
   <script>
     const thoughtInput = document.querySelector('#thoughtInput');
@@ -390,6 +391,7 @@
     const clickSound = document.querySelector('#clickSound');
     const burstSound = document.querySelector('#burstSound');
     const beanSound = document.querySelector('#beanSound');
+    const transitionSound = document.querySelector('#transitionSound');
     const storageKey = 'thought-text';
     const clickRotations = [-4, 3, -6, 4, -3, 5, -5, 2, -4, 6, -2, 4];
     let dozenClickCount = 0;
@@ -428,6 +430,9 @@
         fallingPageTransitionCleanup();
         fallingPageTransitionCleanup = null;
       }
+
+      transitionSound.pause();
+      transitionSound.currentTime = 0;
 
       fallingStarted = false;
       fallingObjects = [];
@@ -550,6 +555,8 @@
       burstSound.currentTime = 0;
       beanSound.pause();
       beanSound.currentTime = 0;
+      transitionSound.pause();
+      transitionSound.currentTime = 0;
       thoughtInput.focus();
     }
 
@@ -615,22 +622,20 @@
 
       fallingObject.removed = true;
       fallingClickCount += 1;
-      const eatingAudio = Math.random() < 0.5 ? eatingSound : eatingSound2;
-      let finishPageTransition = null;
 
       if (fallingClickCount >= 7) {
         fallingPageTransitionPending = true;
 
         const cleanupPageTransition = () => {
-          eatingAudio.removeEventListener('ended', finishPageTransition);
-          eatingAudio.removeEventListener('error', finishPageTransition);
+          transitionSound.removeEventListener('ended', finishPageTransition);
+          transitionSound.removeEventListener('error', finishPageTransition);
 
           if (fallingPageTransitionCleanup === cleanupPageTransition) {
             fallingPageTransitionCleanup = null;
           }
         };
 
-        finishPageTransition = () => {
+        const finishPageTransition = () => {
           if (!fallingPageTransitionPending) {
             return;
           }
@@ -641,17 +646,26 @@
         };
 
         fallingPageTransitionCleanup = cleanupPageTransition;
-        eatingAudio.addEventListener('ended', finishPageTransition);
-        eatingAudio.addEventListener('error', finishPageTransition);
+        transitionSound.currentTime = 0;
+        transitionSound.addEventListener('ended', finishPageTransition);
+        transitionSound.addEventListener('error', finishPageTransition);
+        transitionSound.play().catch((error) => {
+          console.error('sound/3.mp3 재생 실패:', error);
+          finishPageTransition();
+        });
+        fallingObject.element.remove();
+        return;
       }
 
-      eatingAudio.currentTime = 0;
+      // 같은 audio 요소를 재사용하면 빠르게 클릭할 때 다음 클릭이
+      // 이전 재생의 currentTime을 덮어써서 소리가 씹힐 수 있습니다.
+      // 클릭마다 독립적인 오디오 복제본을 만들어 동시에 재생합니다.
+      const eatingAudioTemplate = Math.random() < 0.5 ? eatingSound : eatingSound2;
+      const eatingAudio = eatingAudioTemplate.cloneNode();
+      eatingAudio.preload = 'auto';
+
       eatingAudio.play().catch((error) => {
         console.error('eating sound 재생 실패:', error);
-
-        if (finishPageTransition !== null) {
-          finishPageTransition();
-        }
       });
       fallingObject.element.remove();
     }
@@ -847,7 +861,10 @@
       if (!s01Screen.hidden) {
         if (!fallingStarted) {
           startFallingObjects();
+          return;
         }
+
+        window.location.href = './2.html';
         return;
       }
 
