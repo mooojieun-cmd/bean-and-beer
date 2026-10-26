@@ -97,36 +97,6 @@
       outline-offset: 4px;
     }
 
-    .shred-test-button {
-      position: absolute;
-      top: 12px;
-      left: 50%;
-      z-index: 30;
-      width: 34px;
-      height: 24px;
-      padding: 0;
-      border: 2px solid #111;
-      border-radius: 999px;
-      background: #111;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      transform: translateX(-50%);
-    }
-
-    .shred-test-button:hover {
-      background: #fff;
-      color: #111;
-    }
-
-    .shred-test-button:focus-visible {
-      outline: 3px solid #111;
-      outline-offset: 3px;
-    }
-
     .camera-frame {
       position: relative;
       width: min(70vw, 850px);
@@ -432,8 +402,26 @@
       background: transparent;
       pointer-events: auto;
       cursor: pointer;
+      z-index: 1;
       transform-origin: center;
       will-change: transform;
+      transition: none;
+    }
+
+    .late-shred-bean {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+      display: block;
+      width: 110px;
+      height: auto;
+      opacity: 0;
+      pointer-events: auto;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-drag: none;
+      transform-origin: center bottom;
       transition: none;
     }
 
@@ -448,7 +436,11 @@
     }
 
     .late-shred-stage.is-transforming {
-      background: #fff;
+      background: linear-gradient(
+        to bottom,
+        rgba(67, 240, 0, 0) 42%,
+        rgba(67, 240, 0, 0.34) 100%
+      ), #fff;
     }
 
     .late-shred-stage.is-transforming .late-shred-piece {
@@ -466,6 +458,16 @@
 
     .late-shred-stage.is-transforming .late-shred-image {
       opacity: 1;
+    }
+
+    .late-shred-stage.is-transforming .late-shred-bean {
+      opacity: 1;
+      transition: opacity var(--late-shred-transform-duration, 1800ms) ease, transform var(--late-shred-transform-duration, 1800ms) ease;
+    }
+
+    .late-shred-stage.is-transforming .late-shred-bean.is-removed {
+      opacity: 0 !important;
+      pointer-events: none;
     }
 
     @media (max-width: 600px) {
@@ -504,8 +506,6 @@
     <button class="nav-button right" type="button" aria-label="다음 페이지로 이동">
       <img src="./button_r.png" alt="">
     </button>
-
-    <button id="shredTestButton" class="shred-test-button" type="button" aria-label="파쇄기 효과 테스트">TEST</button>
 
     <section class="camera-frame" aria-label="얼굴과 손 인식 카메라">
       <video id="cameraVideo" class="camera-video" autoplay muted playsinline></video>
@@ -556,7 +556,6 @@
     const cameraStatus = document.querySelector('#cameraStatus');
     const backButton = document.querySelector('.nav-button.left');
     const forwardButton = document.querySelector('.nav-button.right');
-    const shredTestButton = document.querySelector('#shredTestButton');
     const page = document.querySelector('.page');
     const shredScene = document.querySelector('#shredScene');
     const shredIntactClip = document.querySelector('#shredIntactClip');
@@ -619,6 +618,7 @@
     let latePointer = null;
     let lateEllipseClickCount = 0;
     let lateShredNextPageTimer = null;
+    let lateShredNextPageWaiting = false;
     const lateShredTransformDuration = 1800;
     const latePointerForceMultiplier = 3;
     let glassCanvas = null;
@@ -657,10 +657,6 @@
       window.history.forward();
     });
 
-    shredTestButton.addEventListener('click', () => {
-      startShredderSequence();
-    });
-
     lateShredStage.addEventListener('pointermove', stirLateShredPieces);
 
     function setStatus(message) {
@@ -671,12 +667,16 @@
       return Math.random() * (max - min) + min;
     }
 
-    function playLateEllipseSound() {
+    function playLateEllipseSound(onPlaybackUnavailable) {
       const sound = new Audio(eatingSoundUrls[Math.floor(Math.random() * eatingSoundUrls.length)]);
       sound.preload = 'auto';
       sound.play().catch(() => {
         // 브라우저가 오디오를 막아도 클릭 인터랙션은 계속 진행합니다.
+        if (onPlaybackUnavailable) {
+          onPlaybackUnavailable();
+        }
       });
+      return sound;
     }
 
     function handleLateEllipseClick(event) {
@@ -685,13 +685,59 @@
       }
 
       event.stopPropagation();
-      playLateEllipseSound();
       lateEllipseClickCount += 1;
+      event.currentTarget.remove();
 
-      if (lateEllipseClickCount >= 5 && lateShredNextPageTimer === null) {
-        lateShredNextPageTimer = window.setTimeout(() => {
-          window.location.href = './2.html';
-        }, 350);
+      let navigateAfterSound = null;
+      if (lateEllipseClickCount >= 5 && !lateShredNextPageWaiting) {
+        lateShredNextPageWaiting = true;
+        navigateAfterSound = () => {
+          if (lateShredNextPageTimer !== null) {
+            return;
+          }
+
+          lateShredNextPageTimer = window.setTimeout(() => {
+            window.location.href = './2.html?stage=canclose';
+          }, 1000);
+        };
+      }
+
+      const sound = playLateEllipseSound(navigateAfterSound);
+
+      if (navigateAfterSound) {
+        sound.addEventListener('ended', navigateAfterSound, { once: true });
+        sound.addEventListener('error', navigateAfterSound, { once: true });
+        if (sound.ended) {
+          navigateAfterSound();
+        }
+      }
+    }
+
+    function createLateShredBeans(targetEllipseY) {
+      const beanCount = Math.max(5, Math.round(lateShredObjects.length * 0.2));
+      const beanWidth = 110;
+      const beanHeight = beanWidth * (292 / 440);
+      const beanBottomY = targetEllipseY + 54;
+      const beanTargetY = beanBottomY - beanHeight;
+      const maxBeanLeft = Math.max(10, lateShredStage.clientWidth - beanWidth - 10);
+
+      for (let index = 0; index < beanCount; index += 1) {
+        const bean = document.createElement('img');
+        const targetX = randomBetween(10, maxBeanLeft);
+        const targetRotation = randomBetween(-18, 18);
+        const startY = beanTargetY - randomBetween(70, 150);
+
+        bean.className = 'late-shred-bean';
+        bean.src = './bean.png';
+        bean.alt = '';
+        bean.style.zIndex = Math.random() < 0.5 ? '0' : '2';
+        bean.style.transform = `translate3d(${targetX}px, ${startY}px, 0) rotate(${targetRotation}deg)`;
+        bean.addEventListener('click', handleLateEllipseClick);
+        lateShredPieces.appendChild(bean);
+
+        window.requestAnimationFrame(() => {
+          bean.style.transform = `translate3d(${targetX}px, ${beanTargetY}px, 0) rotate(${targetRotation}deg)`;
+        });
       }
     }
 
@@ -846,6 +892,7 @@
       lateShredStage.style.setProperty('--late-shred-transform-duration', `${lateShredTransformDuration}ms`);
       lateShredStage.classList.add('is-transforming');
       const targetEllipseY = Math.max(0, lateShredStage.clientHeight * 0.9 - 54);
+      createLateShredBeans(targetEllipseY);
 
       lateShredObjects.forEach((shredObject) => {
         shredObject.settled = true;
@@ -883,6 +930,7 @@
       lateShredFallComplete = false;
       lateEllipseClickCount = 0;
       lateShredNextPageTimer = null;
+      lateShredNextPageWaiting = false;
       latePointer = null;
       lateShredStage.classList.add('is-visible');
       lateShredStage.setAttribute('aria-hidden', 'false');

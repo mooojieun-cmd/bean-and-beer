@@ -264,6 +264,12 @@
     let canClickStarted = false;
     let canCloseClickStarted = false;
 
+    if (new URLSearchParams(window.location.search).get('stage') === 'canclose') {
+      canClickStarted = true;
+      canStage.classList.add('is-complete');
+      canCloseImage.classList.add('is-visible');
+    }
+
     document.querySelector('.nav-button.left').addEventListener('click', () => {
       window.location.href = './1.html?stage=falling';
     });
