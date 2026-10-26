@@ -471,8 +471,8 @@
       background: transparent;
     }
 
-    .late-shred-stage.is-wave-active #lateShredPieces {
-      visibility: hidden;
+    .late-shred-stage.is-wave-active #lateShredPieces > * {
+      opacity: 0 !important;
     }
 
     .late-horizontal-wave {
@@ -741,7 +741,7 @@
 
       const stageRect = lateShredStage.getBoundingClientRect();
       const drawableItems = [...lateShredPieces.children]
-        .filter((element) => element.isConnected && Number.parseFloat(window.getComputedStyle(element).opacity) > 0)
+        .filter((element) => element.isConnected && !element.classList.contains('is-removed'))
         .sort((first, second) => {
           const firstZIndex = Number.parseInt(window.getComputedStyle(first).zIndex, 10) || 0;
           const secondZIndex = Number.parseInt(window.getComputedStyle(second).zIndex, 10) || 0;
@@ -766,6 +766,17 @@
         snapshotContext.rotate(rotation);
 
         if (element.matches('.late-shred-piece')) {
+          snapshotContext.beginPath();
+          snapshotContext.ellipse(
+            0,
+            0,
+            elementWidth / 2,
+            elementHeight / 2,
+            0,
+            0,
+            Math.PI * 2
+          );
+          snapshotContext.clip();
           snapshotContext.fillStyle = '#43f000';
           snapshotContext.fillRect(-elementWidth / 2, -elementHeight / 2, elementWidth, elementHeight);
 
@@ -799,13 +810,6 @@
       };
     }
 
-    function finishLateHorizontalWave() {
-      lateHorizontalWaveFrame = null;
-      lateHorizontalWave.classList.remove('is-visible');
-      lateHorizontalWave.replaceChildren();
-      lateShredStage.classList.remove('is-wave-active');
-    }
-
     function startLateHorizontalWave() {
       const snapshot = drawLateShredWaveSnapshot();
 
@@ -815,10 +819,9 @@
 
       if (lateHorizontalWaveFrame !== null) {
         window.cancelAnimationFrame(lateHorizontalWaveFrame);
-        finishLateHorizontalWave();
       }
 
-      const rowCount = Math.max(18, Math.min(32, Math.round(snapshot.height / 28)));
+      const rowCount = Math.max(48, Math.min(96, Math.round(snapshot.height / 8)));
       const rowHeight = snapshot.height / rowCount;
       const strips = [];
 
@@ -838,27 +841,20 @@
       lateShredStage.classList.add('is-wave-active');
       lateHorizontalWave.classList.add('is-visible');
 
-      const startedAt = performance.now();
-      const duration = 820;
-      const amplitude = Math.min(44, 12 + lateEllipseClickCount * 4);
+      const amplitude = Math.min(44, 8 + lateEllipseClickCount * 4);
 
       const animateWave = (timestamp) => {
-        const progress = Math.min(1, (timestamp - startedAt) / duration);
-        const envelope = Math.sin(progress * Math.PI);
-        const phase = progress * Math.PI * 4.6;
+        const phase = timestamp / 420;
 
         strips.forEach((strip, rowIndex) => {
-          const rowPhase = (rowIndex / rowCount) * Math.PI * 2.6;
-          const offsetX = Math.sin(phase + rowPhase) * amplitude * envelope;
+          const normalizedRow = rowIndex / rowCount;
+          const wave = Math.sin(normalizedRow * Math.PI * 2.4 + phase)
+            + Math.sin(normalizedRow * Math.PI * 4.8 - phase * 0.72) * 0.22;
+          const offsetX = wave * amplitude;
           strip.style.transform = `translate3d(${offsetX}px, 0, 0)`;
         });
 
-        if (progress < 1) {
-          lateHorizontalWaveFrame = window.requestAnimationFrame(animateWave);
-          return;
-        }
-
-        finishLateHorizontalWave();
+        lateHorizontalWaveFrame = window.requestAnimationFrame(animateWave);
       };
 
       lateHorizontalWaveFrame = window.requestAnimationFrame(animateWave);
