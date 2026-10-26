@@ -260,6 +260,7 @@
     const canCloseSound = document.querySelector('#canCloseSound');
     const beerGifDuration = 11840;
     const canCloseRotationDuration = 600;
+    const delayAfterCanCloseSound = 700;
     let canClickStarted = false;
     let canCloseClickStarted = false;
 
@@ -326,12 +327,14 @@
         }, 1000);
       };
 
-      canCloseSound.addEventListener('ended', showBeerGif, { once: true });
+      canCloseSound.addEventListener('ended', () => {
+        window.setTimeout(showBeerGif, delayAfterCanCloseSound);
+      }, { once: true });
       canCloseSound.currentTime = 0;
       canCloseSound.play().catch((error) => {
         console.error('sound/5.mp3 재생 실패:', error);
         // 오디오 재생이 차단된 경우에도 화면 전환이 멈추지 않도록 합니다.
-        window.setTimeout(showBeerGif, canCloseRotationDuration);
+        window.setTimeout(showBeerGif, canCloseRotationDuration + delayAfterCanCloseSound);
       });
     });
 

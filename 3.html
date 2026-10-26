@@ -398,6 +398,76 @@
       -webkit-user-drag: none;
     }
 
+    .late-shred-stage {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: none;
+      overflow: hidden;
+      background: var(--green);
+      pointer-events: auto;
+      transition: background-color var(--late-shred-transform-duration, 1800ms) ease;
+    }
+
+    .late-shred-stage.is-visible {
+      display: block;
+    }
+
+    #lateShredPieces {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .late-shred-piece {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: block;
+      max-width: none;
+      overflow: hidden;
+      border-radius: 0;
+      background: transparent;
+      pointer-events: auto;
+      cursor: pointer;
+      transform-origin: center;
+      will-change: transform;
+      transition: none;
+    }
+
+    .late-shred-image {
+      display: block;
+      width: 100%;
+      height: 100%;
+      opacity: 1;
+      transition: opacity var(--late-shred-transform-duration, 1800ms) ease;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .late-shred-stage.is-transforming {
+      background: #fff;
+    }
+
+    .late-shred-stage.is-transforming .late-shred-piece {
+      width: 85px !important;
+      height: 54px !important;
+      border-radius: 50%;
+      background: var(--green);
+      transition: opacity var(--late-shred-transform-duration, 1800ms) ease, transform var(--late-shred-transform-duration, 1800ms) ease, width var(--late-shred-transform-duration, 1800ms) ease, height var(--late-shred-transform-duration, 1800ms) ease, border-radius var(--late-shred-transform-duration, 1800ms) ease, background-color var(--late-shred-transform-duration, 1800ms) ease;
+    }
+
+    .late-shred-stage.is-transforming .late-shred-piece.is-removed {
+      opacity: 0 !important;
+      pointer-events: none;
+    }
+
+    .late-shred-stage.is-transforming .late-shred-image {
+      opacity: 1;
+    }
+
     @media (max-width: 600px) {
       .page {
         padding: 18px;
@@ -458,7 +528,10 @@
         <div id="shredSlices" class="shred-slices"></div>
       </div>
       <div class="shredder">
-        <img class="shredder-image" src="./Group%204.png" alt="">
+        <img class="shredder-image" src="./group.gif" alt="">
+      </div>
+      <div id="lateShredStage" class="late-shred-stage" aria-hidden="true">
+        <div id="lateShredPieces" aria-hidden="true"></div>
       </div>
     </div>
   </main>
@@ -492,6 +565,8 @@
     const shredSlicesClip = document.querySelector('#shredSlicesClip');
     const shredSlices = document.querySelector('#shredSlices');
     const shredder = document.querySelector('.shredder');
+    const lateShredStage = document.querySelector('#lateShredStage');
+    const lateShredPieces = document.querySelector('#lateShredPieces');
 
     if (new URLSearchParams(window.location.search).get('enter') === 'slide') {
       page.classList.add('page-enter-slide');
@@ -502,6 +577,10 @@
     const drinkSound1 = new Audio('./sound/drink1.mp3');
     const drinkSound2 = new Audio('./sound/drink2.mp3');
     const drinkSound3 = new Audio('./sound/drink3.mp3');
+    const eatingSoundUrls = [
+      './sound/eatingsound.mp3',
+      './sound/eatingsound2.mp3'
+    ];
     const shredSound = new Audio('./sound/1.mp3');
     const shredSourceCanvas = document.createElement('canvas');
     const shredSourceContext = shredSourceCanvas.getContext('2d');
@@ -532,6 +611,16 @@
     let audioUnlocked = false;
     let shredderStarted = false;
     let motionCaptureStopped = false;
+    let lateShredAnimationFrame = null;
+    let lateShredObjects = [];
+    let lateShredStageStarted = false;
+    let lateShredFallComplete = false;
+    let lateShredTransformStarted = false;
+    let latePointer = null;
+    let lateEllipseClickCount = 0;
+    let lateShredNextPageTimer = null;
+    const lateShredTransformDuration = 1800;
+    const latePointerForceMultiplier = 3;
     let glassCanvas = null;
     let glassBaseImageData = null;
     let beerBounds = null;
@@ -572,8 +661,295 @@
       startShredderSequence();
     });
 
+    lateShredStage.addEventListener('pointermove', stirLateShredPieces);
+
     function setStatus(message) {
       cameraStatus.textContent = message;
+    }
+
+    function randomBetween(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    function playLateEllipseSound() {
+      const sound = new Audio(eatingSoundUrls[Math.floor(Math.random() * eatingSoundUrls.length)]);
+      sound.preload = 'auto';
+      sound.play().catch(() => {
+        // 브라우저가 오디오를 막아도 클릭 인터랙션은 계속 진행합니다.
+      });
+    }
+
+    function handleLateEllipseClick(event) {
+      if (!lateShredTransformStarted || event.currentTarget.classList.contains('is-removed')) {
+        return;
+      }
+
+      event.stopPropagation();
+      playLateEllipseSound();
+      lateEllipseClickCount += 1;
+
+      if (lateEllipseClickCount >= 5 && lateShredNextPageTimer === null) {
+        lateShredNextPageTimer = window.setTimeout(() => {
+          window.location.href = './2.html';
+        }, 350);
+      }
+    }
+
+    function animateLateShredPieces(timestamp) {
+      let activeObjects = false;
+      const screenWidth = lateShredStage.clientWidth;
+
+      if (latePointer && lateShredFallComplete && !lateShredTransformStarted) {
+        const rawDeltaX = latePointer.x - latePointer.previousX;
+        const rawDeltaY = latePointer.y - latePointer.previousY;
+        const pointerDeltaX = Math.max(-24, Math.min(24, rawDeltaX));
+        const pointerDeltaY = Math.max(-24, Math.min(24, rawDeltaY));
+        const pointerMovement = Math.hypot(pointerDeltaX, pointerDeltaY);
+
+        latePointer.previousX = latePointer.x;
+        latePointer.previousY = latePointer.y;
+
+        if (pointerMovement > 0.01) {
+          const radius = Math.max(100, Math.min(170, lateShredStage.clientWidth * 0.13));
+          const pointerSpeedRatio = Math.min(1.5, pointerMovement / 16);
+
+          lateShredObjects.forEach((shredObject) => {
+            const centerX = shredObject.x + shredObject.width / 2;
+            const centerY = shredObject.y + shredObject.height / 2;
+            const distance = Math.hypot(centerX - latePointer.x, centerY - latePointer.y);
+
+            if (distance > radius) {
+              return;
+            }
+
+            const forceRatio = 1 - distance / radius;
+            const proximityForce = forceRatio * forceRatio;
+            const safeDistance = Math.max(distance, 1);
+            const radialForce = 12 * latePointerForceMultiplier
+              * (0.6 + pointerSpeedRatio) * proximityForce;
+
+            shredObject.vx += ((centerX - latePointer.x) / safeDistance) * radialForce;
+            shredObject.vy += ((centerY - latePointer.y) / safeDistance) * radialForce;
+            shredObject.angularVelocity += (pointerDeltaX - pointerDeltaY) * 0.135 * latePointerForceMultiplier * forceRatio;
+            shredObject.startAt = timestamp;
+            shredObject.lastTime = timestamp;
+            shredObject.settled = false;
+            shredObject.element.style.opacity = '1';
+            activeObjects = true;
+          });
+        }
+      }
+
+      lateShredObjects.forEach((shredObject) => {
+        if (shredObject.settled) {
+          return;
+        }
+
+        activeObjects = true;
+
+        if (timestamp < shredObject.startAt) {
+          shredObject.element.style.opacity = '0';
+          return;
+        }
+
+        if (shredObject.lastTime === null) {
+          shredObject.lastTime = timestamp;
+          shredObject.element.style.opacity = '1';
+          shredObject.element.style.transform = `translate3d(${shredObject.x}px, ${shredObject.y}px, 0) rotate(${shredObject.rotation}deg)`;
+          return;
+        }
+
+        const deltaTime = Math.min((timestamp - shredObject.lastTime) / 1000, 0.032);
+        shredObject.lastTime = timestamp;
+        shredObject.vy += shredObject.gravity * deltaTime;
+        shredObject.x += shredObject.vx * deltaTime;
+        shredObject.y += shredObject.vy * deltaTime;
+        shredObject.rotation += shredObject.angularVelocity * deltaTime;
+
+        if (shredObject.x < 0 || shredObject.x > screenWidth - shredObject.width) {
+          shredObject.x = Math.min(
+            Math.max(0, shredObject.x),
+            Math.max(0, screenWidth - shredObject.width)
+          );
+          shredObject.vx *= -0.45;
+        }
+
+        if (shredObject.y >= shredObject.floorY) {
+          shredObject.y = shredObject.floorY;
+
+          if (Math.abs(shredObject.vy) > 70 && shredObject.bounceCount < 4) {
+            shredObject.vy = -shredObject.vy * shredObject.restitution;
+            shredObject.vx *= 0.72;
+            shredObject.angularVelocity *= 0.7;
+            shredObject.bounceCount += 1;
+          } else {
+            shredObject.vy = 0;
+            shredObject.vx *= Math.pow(0.14, deltaTime);
+            shredObject.angularVelocity *= Math.pow(0.08, deltaTime);
+
+            if (Math.abs(shredObject.vx) < 2 && Math.abs(shredObject.angularVelocity) < 3) {
+              shredObject.vx = 0;
+              shredObject.angularVelocity = 0;
+              shredObject.settled = true;
+            }
+          }
+        }
+
+        shredObject.element.style.opacity = '1';
+        shredObject.element.style.transform = `translate3d(${shredObject.x}px, ${shredObject.y}px, 0) rotate(${shredObject.rotation}deg)`;
+      });
+
+      if (!lateShredFallComplete && lateShredObjects.length > 0
+        && lateShredObjects.every((shredObject) => shredObject.settled)) {
+        lateShredFallComplete = true;
+      }
+
+      if (activeObjects) {
+        lateShredAnimationFrame = window.requestAnimationFrame(animateLateShredPieces);
+      } else {
+        lateShredAnimationFrame = null;
+      }
+    }
+
+    function stirLateShredPieces(event) {
+      if (!lateShredStageStarted || !lateShredFallComplete || lateShredTransformStarted || !lateShredObjects.length) {
+        return;
+      }
+
+      const stageRect = lateShredStage.getBoundingClientRect();
+      const pointerX = event.clientX - stageRect.left;
+      const pointerY = event.clientY - stageRect.top;
+
+      if (!latePointer) {
+        latePointer = {
+          x: pointerX,
+          y: pointerY,
+          previousX: pointerX,
+          previousY: pointerY
+        };
+      } else {
+        latePointer.x = pointerX;
+        latePointer.y = pointerY;
+      }
+
+      if (lateShredAnimationFrame === null) {
+        lateShredAnimationFrame = window.requestAnimationFrame(animateLateShredPieces);
+      }
+    }
+
+    function startLateShredTransform() {
+      if (lateShredTransformStarted || !lateShredObjects.length) {
+        return;
+      }
+
+      lateShredTransformStarted = true;
+      lateShredStage.style.setProperty('--late-shred-transform-duration', `${lateShredTransformDuration}ms`);
+      lateShredStage.classList.add('is-transforming');
+      const targetEllipseY = Math.max(0, lateShredStage.clientHeight * 0.9 - 54);
+
+      lateShredObjects.forEach((shredObject) => {
+        shredObject.settled = true;
+        shredObject.y = targetEllipseY;
+        shredObject.vx = 0;
+        shredObject.vy = 0;
+        shredObject.angularVelocity = 0;
+        shredObject.element.style.opacity = '1';
+        if (Math.random() < 0.3) {
+          shredObject.element.classList.add('is-removed');
+          window.setTimeout(() => {
+            shredObject.element.remove();
+          }, lateShredTransformDuration);
+        }
+      });
+
+      window.requestAnimationFrame(() => {
+        lateShredObjects.forEach((shredObject) => {
+          shredObject.element.style.transform = `translate3d(${shredObject.x}px, ${shredObject.y}px, 0) rotate(${shredObject.rotation}deg)`;
+        });
+      });
+
+      if (lateShredAnimationFrame !== null) {
+        window.cancelAnimationFrame(lateShredAnimationFrame);
+        lateShredAnimationFrame = null;
+      }
+    }
+
+    function startLateShredStage() {
+      if (lateShredStageStarted) {
+        return;
+      }
+
+      lateShredStageStarted = true;
+      lateShredFallComplete = false;
+      lateEllipseClickCount = 0;
+      lateShredNextPageTimer = null;
+      latePointer = null;
+      lateShredStage.classList.add('is-visible');
+      lateShredStage.setAttribute('aria-hidden', 'false');
+      lateShredPieces.replaceChildren();
+
+      const sourceSlices = [...shredSlices.querySelectorAll('.shred-slice')];
+      const frameRect = cameraFrame.getBoundingClientRect();
+      const frameWidth = frameRect.width;
+      const frameHeight = frameRect.height;
+      const screenHeight = lateShredStage.clientHeight;
+      const displaySliceWidth = frameWidth / Math.max(1, sourceSlices.length);
+      const sliceGap = Math.max(3, Math.min(6, frameWidth * 0.006));
+      const stageWidth = lateShredStage.clientWidth;
+      const spawnLeft = Math.max(0, (stageWidth - frameWidth) / 2);
+      const startedAt = performance.now();
+
+      lateShredObjects = sourceSlices.map((sourceSlice, sliceIndex) => {
+        const piece = document.createElement('div');
+        const pieceImage = document.createElement('canvas');
+        const pieceContext = pieceImage.getContext('2d');
+        pieceImage.width = sourceSlice.width;
+        pieceImage.height = sourceSlice.height;
+        pieceContext.drawImage(sourceSlice, 0, 0);
+        piece.className = 'late-shred-piece';
+        pieceImage.className = 'late-shred-image';
+        piece.appendChild(pieceImage);
+
+        const pieceWidth = Math.max(1, displaySliceWidth - sliceGap);
+        const pieceHeight = frameHeight;
+        const startX = Math.min(
+          Math.max(0, spawnLeft + sliceIndex * displaySliceWidth + sliceGap / 2),
+          Math.max(0, stageWidth - pieceWidth)
+        );
+        const startY = -pieceHeight;
+
+        piece.style.width = `${pieceWidth}px`;
+        piece.style.height = `${pieceHeight}px`;
+        piece.style.opacity = '0';
+        piece.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
+        piece.addEventListener('click', handleLateEllipseClick);
+        piece.addEventListener('click', startLateShredTransform);
+        lateShredPieces.appendChild(piece);
+
+        return {
+          element: piece,
+          width: pieceWidth,
+          height: pieceHeight,
+          x: startX,
+          y: startY,
+          vx: 0,
+          vy: randomBetween(40, 140),
+          rotation: randomBetween(-30, 30),
+          angularVelocity: randomBetween(-120, 120),
+          gravity: randomBetween(1450, 1750),
+          restitution: randomBetween(0.28, 0.42),
+          floorY: screenHeight * 0.9 - pieceHeight,
+          startAt: startedAt + randomBetween(0, 900),
+          lastTime: null,
+          bounceCount: 0,
+          settled: false
+        };
+      });
+
+      if (lateShredAnimationFrame !== null) {
+        window.cancelAnimationFrame(lateShredAnimationFrame);
+      }
+      lateShredAnimationFrame = window.requestAnimationFrame(animateLateShredPieces);
     }
 
     function isBeerPixel(red, green, blue, alpha) {
@@ -1149,6 +1525,11 @@
       window.setTimeout(() => {
         shredIntact.classList.add('is-moving');
         shredSlices.classList.add('is-visible', 'is-moving');
+
+        // 기존 파쇄 화면이 약 80% 내려간 뒤, 버튼만 남긴 새 초록색 화면으로 덮습니다.
+        window.setTimeout(() => {
+          startLateShredStage();
+        }, shredMotion.passDuration * 0.8);
 
         window.setTimeout(() => {
           shredIntact.style.visibility = 'hidden';
