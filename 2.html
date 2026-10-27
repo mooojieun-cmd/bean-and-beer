@@ -270,6 +270,28 @@
     let canClickStarted = false;
     let canCloseClickStarted = false;
 
+    function primeAudioForLaterPlayback(audio) {
+      const originalVolume = audio.volume;
+      const originalMuted = audio.muted;
+
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = 0;
+      audio.muted = false;
+
+      audio.play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = originalVolume;
+          audio.muted = originalMuted;
+        })
+        .catch(() => {
+          audio.volume = originalVolume;
+          audio.muted = originalMuted;
+        });
+    }
+
     if (new URLSearchParams(window.location.search).get('stage') === 'canclose') {
       canClickStarted = true;
       canStage.classList.add('is-complete');
@@ -312,6 +334,7 @@
 
       canCloseClickStarted = true;
       canCloseImage.classList.add('is-rotating');
+      primeAudioForLaterPlayback(sodaFizzingSound);
 
       const showBeerGif = () => {
         beerGifScreen.classList.add('is-visible');
