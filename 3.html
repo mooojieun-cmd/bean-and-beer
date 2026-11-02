@@ -102,6 +102,36 @@
       outline-offset: 4px;
     }
 
+    .shred-test-button {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      z-index: 30;
+      width: 34px;
+      height: 24px;
+      padding: 0;
+      border: 2px solid #111;
+      border-radius: 999px;
+      background: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      transform: translateX(-50%);
+    }
+
+    .shred-test-button:hover {
+      background: #fff;
+      color: #111;
+    }
+
+    .shred-test-button:focus-visible {
+      outline: 3px solid #111;
+      outline-offset: 3px;
+    }
+
     .camera-frame {
       position: relative;
       width: min(70vw, 850px);
@@ -540,6 +570,8 @@
       <img src="./button_r.png" alt="">
     </button>
 
+    <button id="shredTestButton" class="shred-test-button" type="button" aria-label="파쇄기 효과 테스트">TEST</button>
+
     <section class="camera-frame" aria-label="얼굴과 손 인식 카메라">
       <video id="cameraVideo" class="camera-video" autoplay muted playsinline></video>
       <canvas id="waveCamera" class="wave-camera" aria-hidden="true"></canvas>
@@ -590,6 +622,8 @@
     const cameraStatus = document.querySelector('#cameraStatus');
     const backButton = document.querySelector('.nav-button.left');
     const forwardButton = document.querySelector('.nav-button.right');
+    const forwardButtonImage = forwardButton.querySelector('img');
+    const shredTestButton = document.querySelector('#shredTestButton');
     const page = document.querySelector('.page');
     const shredScene = document.querySelector('#shredScene');
     const shredIntactClip = document.querySelector('#shredIntactClip');
@@ -618,6 +652,8 @@
     const shredSound = new Audio('./sound/1.mp3');
     const shredSourceCanvas = document.createElement('canvas');
     const shredSourceContext = shredSourceCanvas.getContext('2d');
+    const afterimageBufferCanvas = document.createElement('canvas');
+    const afterimageBufferContext = afterimageBufferCanvas.getContext('2d');
     drinkSound1.preload = 'auto';
     drinkSound2.preload = 'auto';
     drinkSound3.preload = 'auto';
@@ -655,6 +691,7 @@
     let lateShredNextPageTimer = null;
     let lateShredNextPageWaiting = false;
     let lateHorizontalWaveFrame = null;
+    let previousWaveImageData = null;
     const lateShredTransformDuration = 1800;
     const latePointerForceMultiplier = 3;
     let glassCanvas = null;
@@ -664,12 +701,40 @@
     const glassSizeScale = 2.25;
     const glassMinWidth = 76 * glassSizeScale;
     const glassMaxWidth = 150 * glassSizeScale;
-    const maxDrinkCount = 7;
-    const glassDrinkContactRatio = 0.30;
+    const maxDrinkCount = 4;
+    const maxRednessDrinkCount = 4;
+    const glassDrinkContactRatio = 1;
     const waveSliceCount = 96;
     const maxWaveAmplitude = 42;
+    const waveStageCount = 4;
     const wavePadding = 56;
     const thoughtText = (localStorage.getItem('thought-text') || '').trim();
+    const pageParams = new URLSearchParams(window.location.search);
+    const navigationEntry = performance.getEntriesByType('navigation')[0];
+    const isPageReload = navigationEntry?.type === 'reload';
+    const returnWithDrinkEffects = pageParams.get('state') === 'after-late' && !isPageReload;
+
+    if (isPageReload || !pageParams.has('state')) {
+      sessionStorage.removeItem('bean-beer-loop-count');
+    }
+
+    const parsedLoopCount = Number.parseInt(
+      returnWithDrinkEffects
+        ? pageParams.get('loop') || sessionStorage.getItem('bean-beer-loop-count') || '0'
+        : '0',
+      10
+    );
+    const loopCount = Number.isFinite(parsedLoopCount) ? Math.max(0, parsedLoopCount) : 0;
+
+    function setStopButtonImage() {
+      forwardButtonImage.src = `./stop2.png?cacheBust=${Date.now()}`;
+    }
+
+    if (returnWithDrinkEffects) {
+      drinkCount = maxDrinkCount;
+      setStopButtonImage();
+      forwardButton.setAttribute('aria-label', '처음으로 돌아가기');
+    }
 
     Array.from(thoughtText).forEach((character, index) => {
       const letter = document.createElement('span');
@@ -690,7 +755,16 @@
     });
 
     forwardButton.addEventListener('click', () => {
+      if (lateShredTransformStarted || returnWithDrinkEffects) {
+        window.location.href = './index.html';
+        return;
+      }
+
       window.history.forward();
+    });
+
+    shredTestButton.addEventListener('click', () => {
+      startShredderSequence();
     });
 
     lateShredStage.addEventListener('pointermove', stirLateShredPieces);
@@ -876,15 +950,20 @@
       startLateHorizontalWave();
 
       let navigateAfterSound = null;
-      if (lateEllipseClickCount >= 8 && !lateShredNextPageWaiting) {
+      if (lateEllipseClickCount >= 5 && !lateShredNextPageWaiting) {
         lateShredNextPageWaiting = true;
         navigateAfterSound = () => {
           if (lateShredNextPageTimer !== null) {
             return;
           }
 
+          const completedLoopCount = Number.parseInt(
+            sessionStorage.getItem('bean-beer-loop-count') || '0',
+            10
+          ) + 1;
+          sessionStorage.setItem('bean-beer-loop-count', String(completedLoopCount));
           lateShredNextPageTimer = window.setTimeout(() => {
-            window.location.href = './2.html?stage=canclose';
+            window.location.href = `./3.html?state=after-late&loop=${completedLoopCount}`;
           }, 1000);
         };
       }
@@ -1076,6 +1155,8 @@
       }
 
       lateShredTransformStarted = true;
+      setStopButtonImage();
+      forwardButton.setAttribute('aria-label', '처음으로 돌아가기');
       lateShredStage.style.setProperty('--late-shred-transform-duration', `${lateShredTransformDuration}ms`);
       lateShredStage.classList.add('is-transforming');
       const targetEllipseY = Math.max(0, lateShredStage.clientHeight * 0.9 - 54);
@@ -1425,6 +1506,44 @@
       return personCameraSource;
     }
 
+    function applyLoopCameraEffects() {
+      if (loopCount < 1) {
+        previousWaveImageData = null;
+        return;
+      }
+
+      const width = waveCamera.width;
+      const height = waveCamera.height;
+
+      if (!width || !height) {
+        return;
+      }
+
+      if (afterimageBufferCanvas.width !== width || afterimageBufferCanvas.height !== height) {
+        afterimageBufferCanvas.width = width;
+        afterimageBufferCanvas.height = height;
+        previousWaveImageData = null;
+      }
+
+      const currentImage = waveCameraContext.getImageData(0, 0, width, height);
+
+      if (previousWaveImageData) {
+        afterimageBufferContext.putImageData(previousWaveImageData, 0, 0);
+        const ghostOffset = 14 + Math.min(18, loopCount * 3);
+
+        waveCameraContext.save();
+        waveCameraContext.globalAlpha = 0.48;
+        waveCameraContext.translate(-ghostOffset, 0);
+        waveCameraContext.drawImage(afterimageBufferCanvas, 0, 0);
+        waveCameraContext.globalAlpha = 0.24;
+        waveCameraContext.translate(ghostOffset * 2.4, 0);
+        waveCameraContext.drawImage(afterimageBufferCanvas, 0, 0);
+        waveCameraContext.restore();
+      }
+
+      previousWaveImageData = currentImage;
+    }
+
     function renderWavyCamera(timestamp, segmentationResult, faceResult) {
       const width = cameraVideo.videoWidth;
       const height = cameraVideo.videoHeight;
@@ -1443,11 +1562,12 @@
 
       waveCamera.style.setProperty('--wave-scale-y', `${paddedHeight / height}`);
       waveCameraContext.clearRect(0, 0, width, paddedHeight);
-      const drinkRatio = Math.min(1, drinkCount / maxDrinkCount);
-      const amplitude = maxWaveAmplitude * drinkRatio;
+      const waveStage = Math.min(waveStageCount, drinkCount);
+      const amplitude = maxWaveAmplitude * (waveStage / waveStageCount);
 
       if (amplitude === 0) {
         waveCameraContext.drawImage(sourceCanvas, 0, wavePadding, width, height);
+        applyLoopCameraEffects();
         return;
       }
 
@@ -1473,6 +1593,8 @@
           height
         );
       }
+
+      applyLoopCameraEffects();
     }
 
     function inferPersonMaskCategory(maskData, width, height, faceResult) {
@@ -1516,7 +1638,7 @@
       const detectedPersonCategory = inferPersonMaskCategory(maskData, width, height, faceResult);
       const redImage = personRednessSourceContext.createImageData(width, height);
       const pixels = redImage.data;
-      const drinkRatio = Math.min(1, drinkCount / maxDrinkCount);
+      const drinkRatio = Math.min(1, drinkCount / maxRednessDrinkCount);
       const alpha = Math.round(190 + drinkRatio * 60);
       let personTopY = height;
       let personBottomY = -1;
@@ -1582,7 +1704,7 @@
         return;
       }
 
-      const drinkRatio = Math.min(1, drinkCount / maxDrinkCount);
+      const drinkRatio = Math.min(1, drinkCount / maxRednessDrinkCount);
       const amplitude = maxWaveAmplitude * drinkRatio * sourceScale;
       const phase = timestamp / 420;
       const sliceWidth = width / waveSliceCount;
