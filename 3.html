@@ -102,36 +102,6 @@
       outline-offset: 4px;
     }
 
-    .shred-test-button {
-      position: absolute;
-      top: 12px;
-      left: 50%;
-      z-index: 30;
-      width: 34px;
-      height: 24px;
-      padding: 0;
-      border: 2px solid #111;
-      border-radius: 999px;
-      background: #111;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      transform: translateX(-50%);
-    }
-
-    .shred-test-button:hover {
-      background: #fff;
-      color: #111;
-    }
-
-    .shred-test-button:focus-visible {
-      outline: 3px solid #111;
-      outline-offset: 3px;
-    }
-
     .camera-frame {
       position: relative;
       width: min(70vw, 850px);
@@ -570,8 +540,6 @@
       <img src="./button_r.png" alt="">
     </button>
 
-    <button id="shredTestButton" class="shred-test-button" type="button" aria-label="파쇄기 효과 테스트">TEST</button>
-
     <section class="camera-frame" aria-label="얼굴과 손 인식 카메라">
       <video id="cameraVideo" class="camera-video" autoplay muted playsinline></video>
       <canvas id="waveCamera" class="wave-camera" aria-hidden="true"></canvas>
@@ -623,7 +591,6 @@
     const backButton = document.querySelector('.nav-button.left');
     const forwardButton = document.querySelector('.nav-button.right');
     const forwardButtonImage = forwardButton.querySelector('img');
-    const shredTestButton = document.querySelector('#shredTestButton');
     const page = document.querySelector('.page');
     const shredScene = document.querySelector('#shredScene');
     const shredIntactClip = document.querySelector('#shredIntactClip');
@@ -761,10 +728,6 @@
       }
 
       window.history.forward();
-    });
-
-    shredTestButton.addEventListener('click', () => {
-      startShredderSequence();
     });
 
     lateShredStage.addEventListener('pointermove', stirLateShredPieces);
